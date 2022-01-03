@@ -17,8 +17,12 @@ results <- results %>%
 #Votes to numeric
 results <- results %>%
   mutate(votes = str_sub(votes, 3, -1),
-         votes = str_replace_all(votes2, ",", ""),
-         votes = as.numeric(votes2))
+         votes = str_replace_all(votes, ",", ""),
+         votes = as.numeric(votes))
+
+#Percentages to numeric
+results <- results %>%
+  mutate(perc = as.numeric(str_extract(perc, "\\d+.\\d+")))
 
 #Fix municipality names
 results <- results %>%
@@ -41,14 +45,39 @@ results <- results %>%
                                   TRUE ~ municipality),
          county_name = paste(municipality, "Municipio"))
 
-#Pivoting
-results_pivot <- results %>%
-  select(county_name, party, votes, election)
+#PNP
+pnp_results <- results %>%
+  select(county_name, party, perc, election) %>%
+  filter(party == "PNP")
 
+gov <- pnp_results %>% filter(election == "G") %>%
+  rename("gov_perc" = "perc")
+res <- pnp_results %>% filter(election == "R") %>%
+  rename("res_perc" = "perc")
 
-territories_counties %>%
-  filter(state_name == "Puerto Rico") %>%
+pnp_results <- left_join(gov, res, by = c("county_name"))
+
+pnp_diff <- pnp_results %>%
+  mutate(diff = res_perc - gov_perc)
+
+#Mapping
+prmap <- left_join(map_base, pnp_diff, by = "county_name")
+
+#tiff("pnp_diff.tiff", units="in", width=7, height=5, res=1000)
+
+prmap %>%
   ggplot() + 
-  geom_sf(mapping = aes(),
-          fill = "grey", color = "#ffffff") + 
-  theme_void()
+  geom_sf(mapping = aes(fill = diff/100),
+          color = "#ffffff") + 
+  labs(title = "Puerto Rico 2020 General Election",
+       subtitle = "New Progressive Party (PNP)",
+       fill = "Res. Commissioner %\n - Governor %") + 
+  scale_fill_distiller(breaks = c(.06,.07,.08,.09,.10,.11,.12),
+                       palette = "Blues", direction = 1, labels = scales::percent_format(accuracy = 1)) + 
+  theme_void() + 
+  theme(plot.title = element_text(hjust = 0.5, margin = margin(0,0,2,0)),
+        plot.subtitle = element_text(hjust = 0.5, margin = margin(0,0,10,0)),
+        legend.position = "bottom",
+        legend.key.width = unit(2, 'cm'))
+
+#dev.off()
